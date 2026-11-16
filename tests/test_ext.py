@@ -1,4 +1,5 @@
 import re
+import textwrap
 from io import BytesIO
 
 import pytest
@@ -7,6 +8,7 @@ from jinja2 import DictLoader
 from jinja2 import Environment
 from jinja2 import nodes
 from jinja2 import pass_context
+from jinja2 import select_autoescape
 from jinja2 import TemplateSyntaxError
 from jinja2.exceptions import TemplateAssertionError
 from jinja2.ext import Extension
@@ -708,6 +710,48 @@ class TestAutoEscape:
         env = Environment(autoescape=True)
         pysource = env.compile(tmplsource, raw=True)
         assert "&lt;testing&gt;\\n" in pysource
+
+    def test_block_inheritance(self):
+        templates = {
+            "base.html": textwrap.dedent(
+                """
+                Subject: {% autoescape false %}{% block subject %}{% endblock %}
+                {% endautoescape %}Body: {% block body %}{% endblock %}
+                """
+            ).strip(),
+            "test1.html": textwrap.dedent(
+                """
+                {% extends 'base.html' %}
+                {% block subject %}{{ text }}{% endblock %}
+                {% block body %}{{ text }}{% endblock %}
+                """
+            ).strip(),
+            "test2.html": textwrap.dedent(
+                """
+                {% extends 'base.html' %}
+                {% autoescape false -%}
+                    {% block subject %}{{ text }}{% endblock %}
+                {%- endautoescape %}
+                {% block body %}{{ text }}{% endblock %}
+                """
+            ).strip(),
+            "test3.html": textwrap.dedent(
+                """
+                {% extends 'base.html' %}
+                {% block subject %}
+                    {%- autoescape false %}{{ text }}{% endautoescape -%}
+                {% endblock %}
+                {% block body %}{{ text }}{% endblock %}
+                """
+            ).strip(),
+        }
+
+        env = Environment(loader=DictLoader(templates), autoescape=select_autoescape())
+        text = "hel'lo"
+        expected = "Subject: hel'lo\nBody: hel&#39;lo"
+
+        for name in ("test1.html", "test2.html", "test3.html"):
+            assert env.get_template(name).render(text=text) == expected
 
     def test_overlay_scopes(self):
         class MagicScopeExtension(Extension):

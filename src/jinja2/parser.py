@@ -72,6 +72,7 @@ class Parser:
         self._last_identifier = 0
         self._tag_stack: list[str] = []
         self._end_token_stack: list[tuple[str, ...]] = []
+        self._autoescape_stack: list[bool | None] = [None]
 
     def fail(
         self,
@@ -285,8 +286,17 @@ class Parser:
 
     def parse_autoescape(self) -> nodes.Scope:
         node = nodes.ScopedEvalContextModifier(lineno=next(self.stream).lineno)
-        node.options = [nodes.Keyword("autoescape", self.parse_expression())]
-        node.body = self.parse_statements(("name:endautoescape",), drop_needle=True)
+        expr = self.parse_expression()
+        node.options = [nodes.Keyword("autoescape", expr)]
+        try:
+            autoescape = bool(expr.as_const(nodes.EvalContext(self.environment)))
+        except nodes.Impossible:
+            autoescape = None
+        self._autoescape_stack.append(autoescape)
+        try:
+            node.body = self.parse_statements(("name:endautoescape",), drop_needle=True)
+        finally:
+            self._autoescape_stack.pop()
         return nodes.Scope([node])
 
     def parse_block(self) -> nodes.Block:
@@ -294,6 +304,7 @@ class Parser:
         node.name = self.stream.expect("name").value
         node.scoped = self.stream.skip_if("name:scoped")
         node.required = self.stream.skip_if("name:required")
+        node.autoescape = self._autoescape_stack[-1]
 
         # common problem people encounter when switching from django
         # to jinja.  we do not support hyphens in block names, so let's

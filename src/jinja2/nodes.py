@@ -397,11 +397,13 @@ class Block(Stmt):
         the `required` field was added.
     """
 
+    attributes = ("autoescape",)
     fields = ("name", "body", "scoped", "required")
     name: str
     body: list[Node]
     scoped: bool
     required: bool
+    autoescape: bool | None
 
 
 class Include(Stmt):

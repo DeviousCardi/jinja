@@ -13,6 +13,9 @@ Unreleased
 -   Use modern packaging metadata with ``pyproject.toml`` instead of ``setup.cfg``.
     :pr:`1793`
 -   Use ``flit_core`` instead of ``setuptools`` as build backend.
+-   Capture a block's autoescape state at definition time, so overriding a
+    block in a child template no longer changes the escaping applied inside
+    it. :issue:`1898`
 
 
 Version 3.1.6

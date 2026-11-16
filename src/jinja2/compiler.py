@@ -2,6 +2,7 @@
 
 import typing as t
 from contextlib import contextmanager
+from copy import copy
 from functools import update_wrapper
 from io import StringIO
 from itertools import chain
@@ -919,7 +920,13 @@ class CodeGenerator(NodeVisitor):
             # It's important that we do not make this frame a child of the
             # toplevel template.  This would cause a variety of
             # interesting issues with identifier tracking.
-            block_frame = Frame(eval_ctx)
+            block_eval_ctx = copy(eval_ctx)
+            if block.autoescape is None:
+                block_eval_ctx.volatile = True
+            else:
+                block_eval_ctx.autoescape = block.autoescape
+                block_eval_ctx.volatile = False
+            block_frame = Frame(block_eval_ctx)
             block_frame.block_frame = True
             undeclared = find_undeclared(block.body, ("self", "super"))
             if "self" in undeclared:
@@ -1947,6 +1954,7 @@ class CodeGenerator(NodeVisitor):
 
     def visit_Scope(self, node: nodes.Scope, frame: Frame) -> None:
         scope_frame = frame.inner()
+        scope_frame.toplevel = frame.toplevel
         scope_frame.symbols.analyze_node(node)
         self.enter_frame(scope_frame)
         self.blockvisit(node.body, scope_frame)
