@@ -8,6 +8,7 @@ import typing as t
 import weakref
 from collections import ChainMap
 from contextlib import aclosing
+from copy import deepcopy
 from functools import lru_cache
 from functools import partial
 from functools import reduce
@@ -1268,6 +1269,46 @@ class Template:
         namespace["__jinja_template__"] = t
 
         return t
+
+    def __copy__(self) -> "Template":
+        cls = type(self)
+        rv = object.__new__(cls)
+        # The compiled render functions are bound to the environment
+        # that created this template, so the copy shares it.
+        rv.environment = self.environment
+        rv.globals = self.globals
+        rv.name = self.name
+        rv.filename = self.filename
+        rv.blocks = self.blocks
+        rv.root_render_func = self.root_render_func
+        rv._module = None
+        rv._debug_info = self._debug_info
+        rv._uptodate = self._uptodate
+        return rv
+
+    def __deepcopy__(self, memo: dict[int, t.Any]) -> "Template":
+        cls = type(self)
+        rv = object.__new__(cls)
+        memo[id(self)] = rv
+        # The compiled render functions are bound to the environment
+        # that created this template, so the copy shares it rather than
+        # deep-copying it. Register the environment and its globals in
+        # the memo so that the shared references stay consistent if
+        # they appear elsewhere in the copied object graph.
+        rv.environment = self.environment
+        memo[id(self.environment)] = self.environment
+        memo[id(self.environment.globals)] = self.environment.globals
+        rv.globals = deepcopy(self.globals, memo)
+        rv.name = self.name
+        rv.filename = self.filename
+        rv.blocks = deepcopy(self.blocks, memo)
+        # functions are treated as atomic by deepcopy, the render
+        # function is shared as well
+        rv.root_render_func = self.root_render_func
+        rv._module = None
+        rv._debug_info = self._debug_info
+        rv._uptodate = self._uptodate
+        return rv
 
     def render(self, *args: t.Any, **kwargs: t.Any) -> str:
         """This method accepts the same arguments as the `dict` constructor:

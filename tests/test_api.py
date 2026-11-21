@@ -1,5 +1,7 @@
+import copy
 import shutil
 import tempfile
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -433,3 +435,60 @@ def test_overlay_enable_async(env):
     env_async = env.overlay(enable_async=True)
     assert env_async.is_async
     assert not env_async.overlay(enable_async=False).is_async
+
+
+class TestTemplateCopy:
+    def test_copy(self):
+        t = Template("hello {{ name }}")
+        c = copy.copy(t)
+        assert c is not t
+        # the compiled render functions are bound to the environment,
+        # so the copy shares it
+        assert c.environment is t.environment
+        assert c.render(name="world") == "hello world"
+        assert t.render(name="world") == "hello world"
+
+    def test_deepcopy(self):
+        t = Template("hello {{ name }}")
+        c = deepcopy(t)
+        assert c is not t
+        assert c.environment is t.environment
+        assert c.globals is not t.globals
+        assert c.blocks is not t.blocks
+        assert c.render(name="world") == "hello world"
+        assert t.render(name="world") == "hello world"
+
+    def test_deepcopy_from_env(self, env):
+        t = env.from_string("hello {{ name }}")
+        c = deepcopy(t)
+        assert c is not t
+        assert c.environment is env
+        assert c.render(name="world") == "hello world"
+
+    def test_deepcopy_globals(self, env):
+        class Foo:
+            pass
+
+        foo = Foo()
+        t = env.from_string("{{ foo }}", globals={"foo": foo})
+        c = deepcopy(t)
+        # template-specific globals are deep-copied
+        assert c.globals["foo"] is not foo
+        assert isinstance(c.globals["foo"], Foo)
+        # the environment globals are shared with the environment
+        assert c.globals.maps[-1] is env.globals
+
+    def test_deepcopy_memo(self):
+        t = Template("hello {{ name }}")
+        c1, c2 = deepcopy([t, t])
+        # the memo is respected: both entries are the same copy
+        assert c1 is c2
+        # an object graph containing both the template and its
+        # environment stays consistent: the environment is shared
+        c, e = deepcopy((t, t.environment))
+        assert c.environment is t.environment is e
+
+    def test_deepcopy_environment(self, env):
+        c = deepcopy(env)
+        assert c is not env
+        assert c.from_string("x={{ x }}").render(x=42) == "x=42"
